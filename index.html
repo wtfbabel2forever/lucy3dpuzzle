@@ -84,10 +84,18 @@
     font-size:18px; 
     color:#ff9aa2; 
   }
+  
+  /* Fallback image style */
+  .fallback-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 8px;
+  }
 </style>
 </head>
 <body>
-  <div class="debug">Loading...</div>
+  <div class="debug">Initializing...</div>
   <div class="container">
     <h1>🐱 Lucy 3D Puzzle Game</h1>
     <div class="puzzle-container" id="puzzleContainer">
@@ -129,33 +137,32 @@ let isSolved = false;
 // Initialize game
 function initGame() {
   // Show loading message
-  document.getElementById('loadingMessage').textContent = "Loading puzzle...";
+  document.getElementById('loadingMessage').textContent = "Checking images...";
   document.getElementById('loadingMessage').style.display = 'block';
   
-  // Start with first image
-  loadImage(LUCY_IMAGES[0]);
+  // Try to load first image
+  tryLoadImage(0);
 }
 
-// Load image and create puzzle
-function loadImage(imageSrc) {
+// Try to load image with fallback
+function tryLoadImage(index) {
+  if(index >= LUCY_IMAGES.length) {
+    // All images failed, show error
+    showNoImagesError();
+    return;
+  }
+  
   const img = new Image();
   img.onload = function() {
-    createPuzzle(img, imageSrc);
+    createPuzzle(img, LUCY_IMAGES[index]);
   };
   img.onerror = function() {
-    logDebug(`✗ ${imageSrc} not found`, 'err');
-    
-    // Try next image in sequence
-    currentImageIndex = (currentImageIndex + 1) % LUCY_IMAGES.length;
-    if(currentImageIndex !== 0) {
-      loadImage(LUCY_IMAGES[currentImageIndex]);
-    } else {
-      // If we've tried all images and none work
-      showNoImagesError();
-    }
+    logDebug(`✗ ${LUCY_IMAGES[index]} not found`, 'err');
+    // Try next image
+    tryLoadImage(index + 1);
   };
   // No cache-busting for better performance
-  img.src = imageSrc;
+  img.src = LUCY_IMAGES[index];
 }
 
 // Create puzzle from image
@@ -203,6 +210,7 @@ function createPuzzle(img, imageSrc) {
       // Add image slice
       const pieceImg = document.createElement('img');
       pieceImg.src = img.src;
+      pieceImg.className = 'fallback-image';
       pieceImg.style.position = 'absolute';
       pieceImg.style.width = containerWidth + 'px';
       pieceImg.style.height = containerHeight + 'px';
@@ -372,11 +380,33 @@ function updateStatus() {
   }
 }
 
+// Show error when no images are available
+function showNoImagesError() {
+  const container = document.getElementById('puzzleContainer');
+  container.innerHTML = '';
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'error';
+  errorDiv.innerHTML = `
+    <p>No puzzle images found!</p>
+    <p>Please upload your lucy(1).png through lucy(10).png files to the image/ folder.</p>
+    <p>Make sure:</p>
+    <ul style="text-align:left; margin:10px 0; padding:0 20px;">
+      <li>The files are named exactly: lucy(1).png, lucy(2).png, ..., lucy(10).png</li>
+      <li>The files are in the image/ folder</li>
+      <li>The repository is public (if using GitHub Pages)</li>
+    </ul>
+  `;
+  container.appendChild(errorDiv);
+  
+  document.getElementById('loadingMessage').style.display = 'none';
+  logDebug("No images available", 'err');
+}
+
 // Event listeners
 document.getElementById('btnNew').addEventListener('click', () => {
   // Move to next image in sequence
   currentImageIndex = (currentImageIndex + 1) % LUCY_IMAGES.length;
-  loadImage(LUCY_IMAGES[currentImageIndex]);
+  tryLoadImage(currentImageIndex);
 });
 
 document.getElementById('btnShuffle').addEventListener('click', () => {
@@ -407,4 +437,44 @@ document.getElementById('puzzleContainer').addEventListener('click', (e) => {
   if(!selectedPiece || isSolved) return;
   
   const container = document.getElementById('puzzleContainer');
-  const
+  const rect = container.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  // Calculate which cell was clicked
+  const pieceWidth = container.offsetWidth / 3;
+  const pieceHeight = container.offsetHeight / 3;
+  const col = Math.floor(x / pieceWidth);
+  const row = Math.floor(y / pieceHeight);
+  
+  // Move selected piece to clicked position
+  moveSelectedPiece(row, col);
+});
+
+// Initialize game
+initGame();
+
+// Add close button to debug panel
+const closeBtn = document.createElement('span');
+closeBtn.textContent = '✕';
+closeBtn.className = 'close';
+closeBtn.onclick = closeDebug;
+$debug.appendChild(closeBtn);
+
+// Add test button for debugging
+const testBtn = document.createElement('button');
+testBtn.textContent = 'Test Images';
+testBtn.style.marginTop = '10px';
+testBtn.onclick = () => {
+  logDebug("Testing images...");
+  LUCY_IMAGES.forEach((src, i) => {
+    const img = new Image();
+    img.onload = () => logDebug(`✓ ${src} loaded successfully`, 'ok');
+    img.onerror = () => logDebug(`✗ ${src} failed to load`, 'err');
+    img.src = src;
+  });
+};
+$debug.appendChild(testBtn);
+</script>
+</body>
+</html>
