@@ -84,13 +84,11 @@ function logDebug(msg, cls='') {
 function setDebug(msg) { $debug.textContent = msg; }
 function closeDebug(){ if($debug) $debug.remove(); }
 
-// ========== Lucy Puzzle Images ==========
-const LUCY_IMAGES = [
-  "lucy1.png","lucy2.png","lucy3.png","lucy4.png","lucy5.png",
-  "lucy6.png","lucy7.png","lucy8.png","lucy9.png","lucy10.png",
-  "lucy11.png","lucy12.png","lucy13.png","lucy14.png","lucy15.png",
-  "lucy16.png","lucy17.png","lucy18.png","lucy19.png","lucy20.png"
-];
+// ========== Lucy Puzzle Images (located in image/ folder) ==========
+const LUCY_IMAGES = [];
+for(let i = 1; i <= 41; i++) {
+  LUCY_IMAGES.push(`image/lucy(${i}).png`);
+}
 
 let currentImageIndex = 0;
 let puzzlePieces = [];
