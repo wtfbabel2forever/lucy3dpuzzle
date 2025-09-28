@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lucy 3D Puzzle</title>
+<style>
+  html,body { height:100%; margin:0; background:#0b1020; font-family:system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial; color:#e8eefc; }
+  .container { max-width:96vw; margin:20px auto; padding:20px; }
+  h1 { text-align:center; margin-bottom:20px; font-size:24px; }
+  .puzzle-container { position:relative; width:100%; max-width:800px; margin:0 auto; }
+  .puzzle-piece { 
+    position:absolute; 
+    cursor:pointer; 
+    border:2px solid #33406a; 
+    border-radius:8px; 
+    box-shadow:0 4px 12px rgba(0,0,0,0.5); 
+    transition:transform 0.2s ease, box-shadow 0.2s ease;
+    background:#1a2446;
+    overflow:hidden;
+  }
+  .puzzle-piece:hover { 
+    transform:scale(1.02); 
+    box-shadow:0 6px 16px rgba(124,245,255,0.3);
+  }
+  .puzzle-piece.selected { 
+    border-color:#7cf5ff; 
+    box-shadow:0 6px 16px rgba(124,245,255,0.5);
+  }
+  .controls { display:flex; justify-content:center; gap:10px; margin:20px 0; flex-wrap:wrap; }
+  button { 
+    padding:8px 16px; 
+    border:none; 
+    border-radius:8px; 
+    background:#1a2446; 
+    color:#e8eefc; 
+    cursor:pointer; 
+    font-weight:bold;
+  }
+  button:hover { background:#212d58; }
+  .status { text-align:center; margin:10px 0; font-size:14px; }
+  .debug { 
+    position:fixed; right:10px; top:10px; z-index:9999; 
+    background:rgba(0,0,0,0.6); color:#fff; padding:8px 10px; 
+    border-radius:10px; font-size:12px; line-height:1.4; max-width:60vw;
+  }
+  .debug b { color:#7cf5ff; }
+  .debug .close { margin-left:8px; cursor:pointer; opacity:.8; }
+  
+  /* 3D effect for puzzle pieces */
+  .puzzle-piece::before {
+    content:'';
+    position:absolute;
+    top:0; left:0; right:0; bottom:0;
+    background:linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%);
+    pointer-events:none;
+    border-radius:8px;
+  }
+</style>
+</head>
+<body>
+  <div class="debug">Loading...</div>
+  <div class="container">
+    <h1>🐱 Lucy 3D Puzzle Game</h1>
+    <div class="puzzle-container" id="puzzleContainer"></div>
+    <div class="controls">
+      <button id="btnNew">New Puzzle</button>
+      <button id="btnShuffle">Shuffle</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div class="status" id="status">Select a puzzle piece to move it!</div>
+  </div>
+
+<script>
+// ========== Debug helpers ==========
+const $debug = document.getElementById('debug');
+function logDebug(msg, cls='') {
+  if(!$debug) return;
+  const p = document.createElement('div');
+  if(cls) p.className = cls;
+  p.textContent = msg;
+  $debug.appendChild(p);
+}
+function setDebug(msg) { $debug.textContent = msg; }
+function closeDebug(){ if($debug) $debug.remove(); }
+
+// ========== Lucy Puzzle Images ==========
+const LUCY_IMAGES = [
+  "lucy1.png","lucy2.png","lucy3.png","lucy4.png","lucy5.png",
+  "lucy6.png","lucy7.png","lucy8.png","lucy9.png","lucy10.png",
+  "lucy11.png","lucy12.png","lucy13.png","lucy14.png","lucy15.png",
+  "lucy16.png","lucy17.png","lucy18.png","lucy19.png","lucy20.png"
+];
+
+let currentImageIndex = 0;
+let puzzlePieces = [];
+let selectedPiece = null;
+let moves = 0;
+let isSolved = false;
+
+// Initialize game
+function initGame() {
+  loadImage(currentImageIndex);
+}
+
+// Load image and create puzzle
+function loadImage(index) {
+  const img = new Image();
+  img.onload = function() {
+    createPuzzle(img);
+  };
+  img.onerror = function() {
+    logDebug(`Error loading ${LUCY_IMAGES[index]}`, 'err');
+    // Try next image
+    currentImageIndex = (currentImageIndex + 1) % LUCY_IMAGES.length;
+    loadImage(currentImageIndex);
+  };
+  img.src = LUCY_IMAGES[index] + "?v=" + Date.now();
+}
+
+// Create puzzle from image
+function createPuzzle(img) {
+  const container = document.getElementById('puzzleContainer');
+  container.innerHTML = '';
+  puzzlePieces = [];
+  selectedPiece = null;
+  moves = 0;
+  isSolved = false;
+  
+  // Set container size based on image
+  const containerWidth = Math.min(800, window.innerWidth * 0.9);
+  const aspectRatio = img.width / img.height;
+  const containerHeight = containerWidth / aspectRatio;
+  
+  container.style.width = containerWidth + 'px';
+  container.style.height = containerHeight + 'px';
+  
+  // Create puzzle pieces (3x3 grid for simplicity)
+  const rows = 3;
+  const cols = 3;
+  const pieceWidth = containerWidth / cols;
+  const pieceHeight = containerHeight / rows;
+  
+  // Create pieces
+  for(let row = 0; row < rows; row++) {
+    for(let col = 0; col < cols; col++) {
+      const piece = document.createElement('div');
+      piece.className = 'puzzle-piece';
+      piece.dataset.row = row;
+      piece.dataset.col = col;
+      piece.dataset.originalRow = row;
+      piece.dataset.originalCol = col;
+      
+      // Set position
+      piece.style.width = pieceWidth + 'px';
+      piece.style.height = pieceHeight + 'px';
+      piece.style.left = (col * pieceWidth) + 'px';
+      piece.style.top = (row * pieceHeight) + 'px';
+      
+      // Add image slice
+      const pieceImg = document.createElement('img');
+      pieceImg.src = img.src;
+      pieceImg.style.position = 'absolute';
+      pieceImg.style.width = containerWidth + 'px';
+      pieceImg.style.height = containerHeight + 'px';
+      pieceImg.style.left = (-col * pieceWidth) + 'px';
+      pieceImg.style.top = (-row * pieceHeight) + 'px';
+      pieceImg.style.borderRadius = '8px';
+      pieceImg.style.objectFit = 'cover';
+      
+      piece.appendChild(pieceImg);
+      container.appendChild(piece);
+      puzzlePieces.push(piece);
+    }
+  }
+  
+  // Shuffle pieces
+  shufflePieces();
+  
+  // Add click event listeners
+  puzzlePieces.forEach(piece => {
+    piece.addEventListener('click', () => selectPiece(piece));
+  });
+  
+  updateStatus();
+  logDebug(`Loaded ${LUCY_IMAGES[currentImageIndex]}`, 'ok');
+}
+
+// Shuffle puzzle pieces
+function shufflePieces() {
+  // Get all positions
+  const positions = [];
+  puzzlePieces.forEach((piece, i) => {
+    positions.push({
+      row: parseInt(piece.dataset.row),
+      col: parseInt(piece.dataset.col),
+      originalRow: parseInt(piece.dataset.originalRow),
+      originalCol: parseInt(piece.dataset.originalCol)
+    });
+  });
+  
+  // Shuffle positions
+  for(let i = positions.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [positions[i], positions[j]] = [positions[j], positions[i]];
+  }
+  
+  // Apply shuffled positions
+  puzzlePieces.forEach((piece, i) => {
+    const pos = positions[i];
+    piece.dataset.row = pos.row;
+    piece.dataset.col = pos.col;
+    piece.style.left = (pos.col * piece.offsetWidth) + 'px';
+    piece.style.top = (pos.row * piece.offsetHeight) + 'px';
+    
+    // Reset original position data
+    piece.dataset.originalRow = pos.originalRow;
+    piece.dataset.originalCol = pos.originalCol;
+  });
+  
+  isSolved = false;
+  updateStatus();
+}
+
+// Select a piece
+function selectPiece(piece) {
+  if(isSolved) return;
+  
+  // Deselect previous piece
+  if(selectedPiece) {
+    selectedPiece.classList.remove('selected');
+  }
+  
+  // Select new piece
+  selectedPiece = piece;
+  piece.classList.add('selected');
+}
+
+// Move selected piece to target position
+function moveSelectedPiece(targetRow, targetCol) {
+  if(!selectedPiece || isSolved) return;
+  
+  // Get current position
+  const currentRow = parseInt(selectedPiece.dataset.row);
+  const currentCol = parseInt(selectedPiece.dataset.col);
+  
+  // Check if target position is valid
+  if(targetRow >= 0 && targetRow < 3 && targetCol >= 0 && targetCol < 3) {
+    // Find piece at target position
+    const targetPiece = puzzlePieces.find(p => 
+      parseInt(p.dataset.row) === targetRow && parseInt(p.dataset.col) === targetCol
+    );
+    
+    if(targetPiece) {
+      // Swap positions
+      const tempRow = targetPiece.dataset.row;
+      const tempCol = targetPiece.dataset.col;
+      
+      // Move target piece to current position
+      targetPiece.dataset.row = currentRow;
+      targetPiece.dataset.col = currentCol;
+      targetPiece.style.left = (currentCol * targetPiece.offsetWidth) + 'px';
+      targetPiece.style.top = (currentRow * targetPiece.offsetHeight) + 'px';
+      
+      // Move selected piece to target position
+      selectedPiece.dataset.row = tempRow;
+      selectedPiece.dataset.col = tempCol;
+      selectedPiece.style.left = (tempCol * selectedPiece.offsetWidth) + 'px';
+      selectedPiece.style.top = (tempRow * selectedPiece.offsetHeight) + 'px';
+      
+      // Update moves
+      moves++;
+      updateStatus();
+      
+      // Check if solved
+      checkIfSolved();
+    }
+  }
+  
+  // Deselect piece
+  selectedPiece.classList.remove('selected');
+  selectedPiece = null;
+}
+
+// Check if puzzle is solved
+function checkIfSolved() {
+  isSolved = true;
+  puzzlePieces.forEach(piece => {
+    const row = parseInt(piece.dataset.row);
+    const col = parseInt(piece.dataset.col);
+    const originalRow = parseInt(piece.dataset.originalRow);
+    const originalCol = parseInt(piece.dataset.originalCol);
+    
+    if(row !== originalRow || col !== originalCol) {
+      isSolved = false;
+    }
+  });
+  
+  if(isSolved) {
+    showWinAnimation();
+    updateStatus();
+  }
+}
+
+// Show win animation
+function showWinAnimation() {
+  const container = document.getElementById('puzzleContainer');
+  container.style.transition = 'all 0.5s ease';
+  container.style.transform = 'scale(1.05)';
+  
+  setTimeout(() => {
+    container.style.transform = 'scale(1)';
+    alert(`🎉 Congratulations! You solved the puzzle in ${moves} moves! 🎉`);
+  }, 500);
+}
+
+// Update status message
+function updateStatus() {
+  const status = document.getElementById('status');
+  if(isSolved) {
+    status.textContent = `✅ Puzzle solved in ${moves} moves!`;
+  } else {
+    status.textContent = `Moves: ${moves} | Click a piece to select it, then click an empty space to move it.`;
+  }
+}
+
+// Event listeners
+document.getElementById('btnNew').addEventListener('click', () => {
+  currentImageIndex = (currentImageIndex + 1) % LUCY_IMAGES.length;
+  initGame();
+});
+
+document.getElementById('btnShuffle').addEventListener('click', () => {
+  if(!isSolved) {
+    shufflePieces();
+  }
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  if(!isSolved) {
+    // Reset to original positions
+    puzzlePieces.forEach(piece => {
+      const originalRow = parseInt(piece.dataset.originalRow);
+      const originalCol = parseInt(piece.dataset.originalCol);
+      piece.dataset.row = originalRow;
+      piece.dataset.col = originalCol;
+      piece.style.left = (originalCol * piece.offsetWidth) + 'px';
+      piece.style.top = (originalRow * piece.offsetHeight) + 'px';
+    });
+    moves = 0;
+    isSolved = false;
+    updateStatus();
+  }
+});
+
+// Handle clicking on puzzle container to move selected piece
+document.getElementById('puzzleContainer').addEventListener('click', (e) => {
+  if(!selectedPiece || isSolved) return;
+  
+  const container = document.getElementById('puzzleContainer');
+  const rect = container.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  // Calculate which cell was clicked
+  const pieceWidth = container.offsetWidth / 3;
+  const pieceHeight = container.offsetHeight / 3;
+  const col = Math.floor(x / pieceWidth);
+  const row = Math.floor(y / pieceHeight);
+  
+  // Move selected piece to clicked position
+  moveSelectedPiece(row, col);
+});
+
+// Initialize game
+initGame();
+
+// Add close button to debug panel
+const closeBtn = document.createElement('span');
+closeBtn.textContent = '✕';
+closeBtn.className = 'close';
+closeBtn.onclick = closeDebug;
+$debug.appendChild(closeBtn);
+
+// Check if all images are available
+logDebug("Checking Lucy images...");
+LUCY_IMAGES.forEach((src, i) => {
+  const img = new Image();
+  img.onload = () => logDebug(`✓ found ${src}`, 'ok');
+  img.onerror = () => logDebug(`✗ missing ${src}`, 'err');
+  img.src = src + "?v=" + Date.now();
+});
+</script>
+</body>
+</html>
